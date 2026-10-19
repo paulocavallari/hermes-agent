@@ -46,7 +46,9 @@ def load_active(home: Path) -> ActiveOverlay | None:
     target = Path(home) / "harness2" / "active" / "overlay.md"
     try:
         store.confine_ancestors(target, anchor=Path(home))
-        flags = os.O_RDONLY | getattr(os, "O_NOFOLLOW", 0)
+        if not stat.S_ISREG(os.lstat(target).st_mode):
+            return None
+        flags = os.O_RDONLY | getattr(os, "O_NOFOLLOW", 0) | getattr(os, "O_NONBLOCK", 0)
         fd = os.open(target, flags)
         try:
             info = os.fstat(fd)

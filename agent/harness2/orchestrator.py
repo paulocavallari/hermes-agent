@@ -409,8 +409,10 @@ def _run_parallel(
             continue
         candidate_id = f"cand-{index:02d}"
         try:
-            first, _ = harness.apply_edits(base, pair[0].edits if not pair[0].keep_base else ())
-            candidate, applied = harness.apply_edits(first, pair[1].edits if not pair[1].keep_base else ())
+            first, applied_inv = harness.apply_edits(base, pair[0].edits if not pair[0].keep_base else ())
+            candidate, applied_dom = harness.apply_edits(first, pair[1].edits if not pair[1].keep_base else ())
+            applied_by_path = {edit.path: edit for edit in (*applied_inv, *applied_dom)}
+            applied = tuple(applied_by_path.values())
         except harness.EditError as exc:
             invalid_count += 1
             writer.write_json(f"{round_rel}/candidates/{candidate_id}.errors.json",

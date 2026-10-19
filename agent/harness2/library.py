@@ -71,6 +71,27 @@ def _lesson_order(lessons: Sequence[Lesson]) -> list[Lesson]:
     return sorted(lessons, key=lambda lesson: (lesson.created_at, lesson.lesson_id), reverse=True)
 
 
+def _same_lesson_content(left: Lesson, right: Lesson) -> bool:
+    """Compare learned meaning while ignoring run-specific provenance paths."""
+    return (
+        left.lesson_id,
+        left.cue,
+        left.lesson,
+        left.component,
+        left.evidence.diff_lines,
+        left.evidence.base_excerpt,
+        left.evidence.candidate_excerpt,
+    ) == (
+        right.lesson_id,
+        right.cue,
+        right.lesson,
+        right.component,
+        right.evidence.diff_lines,
+        right.evidence.base_excerpt,
+        right.evidence.candidate_excerpt,
+    )
+
+
 def append_lessons(writer: store.Store, domain: str, lessons: Sequence[Lesson]) -> None:
     domain = _domain(domain)
     path = f"{_domain_root(domain)}/lessons.jsonl"
@@ -83,7 +104,7 @@ def append_lessons(writer: store.Store, domain: str, lessons: Sequence[Lesson]) 
             raise LibraryError("E_LIBRARY", "lesson domain mismatch")
         previous = by_id.get(lesson.lesson_id)
         if previous is not None:
-            if previous != lesson:
+            if not _same_lesson_content(previous, lesson):
                 raise LibraryError("E_LESSON_COLLISION", lesson.lesson_id)
             continue
         by_id[lesson.lesson_id] = lesson

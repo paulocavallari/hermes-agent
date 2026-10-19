@@ -9,7 +9,7 @@ from pathlib import PurePosixPath
 from typing import Any, Mapping, Sequence
 
 from .harness import AppliedEdit
-from .llm import BudgetExceeded, InvalidPayload as JsonInvalidPayload, parse_json_object
+from .llm import BudgetExceeded, InvalidPayload as JsonInvalidPayload, parse_json_object, redact_strict
 from .models import (
     CandidateReflection,
     Classification,
@@ -142,9 +142,10 @@ def _call_voter(
             if budget is not None:
                 budget.reserve(request.max_tokens)
             response = client.complete(request)
-            parsed = parse_selection_payload(parse_json_object(response.text))
+            payload = parse_selection_payload(parse_json_object(response.text))
+            payload = SelectionPayload(payload.decision, payload.chosen, redact_strict(payload.rationale))
             usable = {candidate_id for candidate_id, probe in candidate_views if probe.status is Status.ok}
-            return _normalize_vote(voter, parsed, built.mapping, usable), built.mapping
+            return _normalize_vote(voter, payload, built.mapping, usable), built.mapping
         except (JsonInvalidPayload, ValueError) as exc:
             error = "invalid_payload"
             if attempt == 0:
