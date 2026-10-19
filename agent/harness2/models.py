@@ -117,7 +117,7 @@ def _valid_harness_path(path: str) -> bool:
     return parts[2] in {"references", "templates", "assets", "scripts"} and all(parts[3:])
 
 
-def canonical_bytes(harness: "Harness") -> bytes:
+def canonical_bytes(harness: Harness) -> bytes:
     payload = {"overlay": harness.overlay, "files": {key: harness.files[key] for key in sorted(harness.files)}}
     text = json.dumps(payload, ensure_ascii=False, sort_keys=True, separators=(",", ":")) + "\n"
     return text.encode("utf-8")
@@ -149,11 +149,11 @@ class Harness:
         object.__setattr__(self, "harness_id", "h-" + digest[:12])
 
     @classmethod
-    def make(cls, overlay: str, files: Mapping[str, str] | None = None) -> "Harness":
+    def make(cls, overlay: str, files: Mapping[str, str] | None = None) -> Harness:
         return cls(overlay, dict(files or {}))
 
     @classmethod
-    def empty(cls) -> "Harness":
+    def empty(cls) -> Harness:
         return cls.make("")
 
     def to_dict(self) -> dict[str, Any]:

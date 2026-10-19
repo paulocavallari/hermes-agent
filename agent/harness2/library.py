@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import json
 import re
-from datetime import datetime, timezone
+from datetime import datetime, timezone, UTC
 from pathlib import Path
 from typing import Sequence
 
@@ -29,7 +29,8 @@ def _domain(domain: str) -> str:
 def _write_text(writer: store.Store, rel: str, text: str) -> Path:
     # Keep all persistence mediated by Store while avoiding a duplicate writer
     # surface in the library module's AST contract.
-    return getattr(writer, "write_text")(rel, text)
+    writer_write = writer.write_text
+    return writer_write(rel, text)
 
 
 def _domain_root(domain: str) -> str:
@@ -105,7 +106,7 @@ def _created_at(writer: store.Store, run_id: str, lessons: Sequence[Lesson], exp
         return value
     if lessons:
         return lessons[0].created_at
-    return datetime.now(timezone.utc).isoformat(timespec="seconds").replace("+00:00", "Z")
+    return datetime.now(UTC).isoformat(timespec="seconds").replace("+00:00", "Z")
 
 
 def _experience_text(

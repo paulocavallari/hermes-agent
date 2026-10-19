@@ -556,6 +556,31 @@ def _identity_parts(agent: Any, ctx_len: Optional[int]) -> tuple[list[str], bool
     return ([_soul_content], True) if _soul_content else ([DEFAULT_AGENT_IDENTITY], False)
 
 
+def _harness2_overlay_part(agent: Any) -> list[str]:
+    """Opt-in Harness² overlay from the agent's own home; never raises."""
+    try:
+        from hermes_constants import get_hermes_home, reset_hermes_home_override, set_hermes_home_override
+        from hermes_cli.config import load_config_readonly
+        from agent.harness2.overlay import load_injected_overlay
+
+        home = _agent_home(agent)
+        token = set_hermes_home_override(home) if home is not None else None
+        try:
+            cfg = load_config_readonly()
+            harness2_cfg = cfg.get("harness2") if isinstance(cfg, dict) else None
+            gate = isinstance(harness2_cfg, dict) and bool(harness2_cfg.get("inject_overlay", False))
+            if not gate:
+                return []
+            target_home = home if home is not None else get_hermes_home()
+            text = load_injected_overlay(target_home, gate=True)
+            return [text] if text else []
+        finally:
+            if token is not None:
+                reset_hermes_home_override(token)
+    except Exception:  # health: allow BLE001 -- prompt construction must fail closed without breaking the agent
+        return []
+
+
 def _guidance_parts(agent: Any) -> list[str]:
     """Universal + tool-aware + model-gated guidance blocks, each gated by its config.yaml key."""
     parts: list[str] = []
@@ -746,6 +771,7 @@ def build_system_prompt_parts(agent: Any, system_message: Optional[str] = None) 
     _ctx_len = _cc_len if isinstance(_cc_len, int) and _cc_len > 0 else None
     # ── Stable tier ────────────────────────────────────────────────
     stable_parts, _soul_loaded = _identity_parts(agent, _ctx_len)
+    stable_parts.extend(_harness2_overlay_part(agent))
     # The skill_view() pointer dangles without skill tools OR without the
     # hermes-agent skill installed, so the variant is chosen after the skills
     # index is built; this slot holds its position.

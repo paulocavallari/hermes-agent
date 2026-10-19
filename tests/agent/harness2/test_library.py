@@ -40,7 +40,7 @@ def test_record_writes_full_tree_including_support_files(tmp_path):
     bundle = _harness(support=True)
     library.record_run(writer, "demo", bundle, (), run_id="run-000000000001",
                        decision=Decision.CANDIDATE, rounds=(), created_at="2025-01-01T00:00:00Z")
-    root = "library/demo/harnesses/{}/harness".format(bundle.harness_id)
+    root = f"library/demo/harnesses/{bundle.harness_id}/harness"
     assert writer.read_bundle(root).content_sha256 == bundle.content_sha256
     assert writer.read_text(f"{root}/skills/demo/references/guide.md") == "SUPPORT_CONTENT_MUST_NOT_BE_INLINED\n"
 

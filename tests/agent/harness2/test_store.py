@@ -126,8 +126,7 @@ def test_read_bundle_enforces_size_caps(home, tmp_path):
 
 
 def test_read_plain_tree_rejects_linked_parent_bundle(home, tmp_path, monkeypatch):
-    with home() as selected:
-        writer = store.Store(selected)
+    with home() as _selected:
         outside = tmp_path / "outside"
         bundle = outside / "bundle"
         bundle.mkdir(parents=True)

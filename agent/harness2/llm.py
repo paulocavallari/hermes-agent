@@ -95,7 +95,7 @@ class AuxLlmClient:
             )
         except LlmError:
             raise
-        except Exception as exc:
+        except Exception as exc:  # health: allow BLE001 -- redact and wrap unexpected transport failures at the adapter boundary
             raise LlmError(redact_strict(str(exc))[:200]) from None
 
 

@@ -162,7 +162,7 @@ def _call_voter(
         except BudgetExceeded:
             error = "budget"
             break
-        except Exception:
+        except Exception:  # health: allow BLE001 -- contain composer client failures as a safe fallback vote
             error = "llm_error"
             break
     return Vote(voter, Decision.KEEP_BASE, None, "", error or "invalid_payload"), built.mapping
@@ -303,7 +303,7 @@ def _build_lesson(
         f"({base_probe.behavior_signature[:12]} -> {observation.probe.behavior_signature[:12]}); "
         f"{first_diff_line[:120]}"
     )
-    lesson_id = "l-" + hashlib.sha256(f"{cue}|{lesson_text}|{observation.candidate_id}".encode("utf-8")).hexdigest()[:8]
+    lesson_id = "l-" + hashlib.sha256(f"{cue}|{lesson_text}|{observation.candidate_id}".encode()).hexdigest()[:8]
     confidence = Confidence.high if classification.classification is Verdict.helped else Confidence.medium
     return Lesson(
         lesson_id,

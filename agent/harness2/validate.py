@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import re
-import unicodedata
 from dataclasses import dataclass
 from pathlib import PurePosixPath
 from typing import Iterable
@@ -22,15 +21,6 @@ MAX_TASK_BYTES = 65536
 _SUPPORT_DIRS = {"references", "templates", "assets", "scripts"}
 _MD_LINK = re.compile(r"\]\(\s*(?P<dest><[^>\n]*>|[^)\s]+)(?:\s+\"[^\"]*\")?\s*\)")
 _DIR_TOKEN = re.compile(r"(?P<ref>[^\s()\[\]`'\"]*?(?:references|templates|assets|scripts)[\\/][^\s()\[\]`'\"]*)")
-_INJECTION_PATTERNS = tuple(re.compile(pattern, re.IGNORECASE) for pattern in (
-    r"\bignore (all |any )?(previous|prior|above) (instructions?|rules?|prompts?)\b",
-    r"\bdisregard (all |any )?(previous|prior|above)\b",
-    r"\byou are now\b",
-    r"\b(reveal|print|show|repeat) (the )?(system prompt|hidden instructions?)\b",
-    r"\b(begin|start) (system|admin|developer) (prompt|override|mode)\b",
-    r"\bdeveloper mode (enabled|on)\b",
-))
-_INVISIBLE = re.compile("[\u200b-\u200f\u202a-\u202e\u2066-\u2069]")
 _ABSOLUTE_DRIVE = re.compile(r"^[A-Za-z]:[\\/]")
 
 
@@ -88,7 +78,7 @@ def _classify_reference(ref: str, skill_name: str, files: dict[str, str]) -> str
         return "V_REF_TRAVERSAL"
     if any(char in ref for char in "{}<>*$\\"):
         return "V_REF_PLACEHOLDER"
-    normalized = ref[2:] if ref.startswith("./") else ref
+    normalized = ref.removeprefix("./")
     first = re.split(r"[\\/]", normalized, maxsplit=1)[0]
     if first not in _SUPPORT_DIRS:
         return "V_REF_INVALID"
@@ -99,7 +89,7 @@ def _classify_reference(ref: str, skill_name: str, files: dict[str, str]) -> str
 
 
 def _has_control(text: str) -> bool:
-    return any(unicodedata.category(char) == "Cc" and char not in "\n\t" for char in text)
+    return store.contains_control(text)
 
 
 def _valid_path(path: str) -> tuple[str | None, str | None]:
@@ -120,8 +110,7 @@ def _valid_path(path: str) -> tuple[str | None, str | None]:
     return None, None
 
 
-def validate_harness(harness: Harness, *, trigger_policy: str = "all") -> ValidationResult:
-    errors: list[ValidationError] = []
+def _validate_bundle_limits(harness: Harness, errors: list[ValidationError]) -> set[str]:
     overlay = harness.overlay
     files = harness.files
     if len(overlay) > MAX_OVERLAY_CHARS:
@@ -132,32 +121,36 @@ def validate_harness(harness: Harness, *, trigger_policy: str = "all") -> Valida
         _error(errors, "V_TOO_MANY_FILES", "", "too many files")
     total = len(overlay.encode("utf-8"))
     skill_names: set[str] = set()
-    skill_paths: dict[str, str] = {}
     for path, text in files.items():
         if not isinstance(path, str) or not isinstance(text, str):
             _error(errors, "V_UNKNOWN_FILE", str(path), "invalid path or content type")
             continue
         skill_name, kind = _valid_path(path)
         if skill_name is None:
-            _error(errors, "V_PATH" if any(x in path for x in ("..", ":", "\\")) or path.startswith("/") else "V_UNKNOWN_FILE",
-                   path, "invalid harness path")
+            code = "V_PATH" if any(x in path for x in ("..", ":", "\\")) or path.startswith("/") else "V_UNKNOWN_FILE"
+            _error(errors, code, path, "invalid harness path")
             continue
         skill_names.add(skill_name)
-        if kind == "skill":
-            skill_paths[skill_name] = path
-            file_size = len(text.encode("utf-8"))
-            if file_size > MAX_SKILL_BYTES:
-                _error(errors, "V_SKILL_BYTES", path, "skill file exceeds byte limit")
-        else:
-            file_size = len(text.encode("utf-8"))
-            if file_size > MAX_SUPPORT_BYTES:
-                _error(errors, "V_FILE_SIZE", path, "support file exceeds byte limit")
+        file_size = len(text.encode("utf-8"))
+        if kind == "skill" and file_size > MAX_SKILL_BYTES:
+            _error(errors, "V_SKILL_BYTES", path, "skill file exceeds byte limit")
+        elif kind == "support" and file_size > MAX_SUPPORT_BYTES:
+            _error(errors, "V_FILE_SIZE", path, "support file exceeds byte limit")
         if _has_control(text):
             _error(errors, "V_OVERLAY_CONTROL", path, "control character")
         total += file_size
     if total > MAX_TOTAL_BYTES:
         _error(errors, "V_TOTAL_SIZE", "", "bundle exceeds total byte limit")
+    return skill_names
 
+
+def _validate_skill_metadata(
+    overlay: str,
+    files: dict[str, str],
+    skill_names: set[str],
+    trigger_policy: str,
+    errors: list[ValidationError],
+) -> None:
     for name in sorted(skill_names):
         skill_path = f"skills/{name}/SKILL.md"
         text = files.get(skill_path)
@@ -181,26 +174,38 @@ def validate_harness(harness: Harness, *, trigger_policy: str = "all") -> Valida
             if not trigger.search(overlay):
                 _error(errors, "V_TRIGGER_MISSING", "overlay.md", f"missing trigger for {name}")
 
-    for ref in _extract_references(overlay):
+
+def _validate_references(harness: Harness, errors: list[ValidationError]) -> None:
+    for _ref in _extract_references(harness.overlay):
         _error(errors, "V_REF_IN_OVERLAY", "overlay.md", "support-file references belong in a skill")
-    for path, text in files.items():
+    for path, text in harness.files.items():
         skill_name, _ = _valid_path(path) if isinstance(path, str) else (None, None)
         if skill_name is None:
             continue
         for ref in _extract_references(text):
-            code = _classify_reference(ref, skill_name, files)
+            code = _classify_reference(ref, skill_name, harness.files)
             if code:
                 _error(errors, code, path, "invalid support-file reference")
 
-    for path, text in [("overlay.md", overlay), *files.items()]:
+
+def _validate_content_safety(harness: Harness, errors: list[ValidationError]) -> None:
+    for path, text in [("overlay.md", harness.overlay), *harness.files.items()]:
         encoded_size = len(text.encode("utf-8"))
         # Oversize inputs are already rejected above; run the fast strict scanner on
         # them without invoking the repository redactor's substantially slower pass.
         secret = bool(store.scan_secrets(text)) if encoded_size > MAX_SKILL_BYTES else store.contains_secret(text)
         if secret:
             _error(errors, "V_SECRET", path, "secret-like content rejected")
-        if _INVISIBLE.search(text) or any(pattern.search(text) for pattern in _INJECTION_PATTERNS):
+        if store.contains_invisible(text) or store.contains_prompt_injection(text):
             _error(errors, "V_INJECTION", path, "unsafe instruction content")
+
+
+def validate_harness(harness: Harness, *, trigger_policy: str = "all") -> ValidationResult:
+    errors: list[ValidationError] = []
+    skill_names = _validate_bundle_limits(harness, errors)
+    _validate_skill_metadata(harness.overlay, harness.files, skill_names, trigger_policy, errors)
+    _validate_references(harness, errors)
+    _validate_content_safety(harness, errors)
     if trigger_policy not in {"all", "none"}:
         _error(errors, "V_PATH", "", "unknown trigger policy")
     return ValidationResult(tuple(errors))

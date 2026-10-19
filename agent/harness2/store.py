@@ -6,6 +6,7 @@ import json
 import os
 import re
 import stat
+import unicodedata
 from dataclasses import dataclass, fields, is_dataclass
 from enum import Enum
 from pathlib import Path, PurePath
@@ -65,6 +66,15 @@ _ENV_ASSIGNMENT = re.compile(
 )
 _URL_USERINFO = re.compile(r"://(?P<value>[^/\s@]+)@")
 _URL_QUERY = re.compile(r"(?i)[?&](?P<key>token|key|api_key|access_token|sig|signature|password|secret)=(?P<value>[^&\s]{3,})")
+_PROMPT_INJECTION_PATTERNS = tuple(re.compile(pattern, re.IGNORECASE) for pattern in (
+    r"\bignore (all |any )?(previous|prior|above) (instructions?|rules?|prompts?)\b",
+    r"\bdisregard (all |any )?(previous|prior|above)\b",
+    r"\byou are now\b",
+    r"\b(reveal|print|show|repeat) (the )?(system prompt|hidden instructions?)\b",
+    r"\b(begin|start) (system|admin|developer) (prompt|override|mode)\b",
+    r"\bdeveloper mode (enabled|on)\b",
+))
+_INVISIBLE = re.compile("[\u200b-\u200f\u202a-\u202e\u2066-\u2069]")
 
 
 def _placeholder(value: str) -> bool:
@@ -127,6 +137,29 @@ def contains_secret(text: str) -> bool:
     return redact_sensitive_text(
         text, force=True, file_read=True, secret_file=True, redact_url_credentials=True
     ) != text
+
+
+def contains_prompt_injection(text: str) -> bool:
+    return any(pattern.search(text) for pattern in _PROMPT_INJECTION_PATTERNS)
+
+
+def contains_invisible(text: str) -> bool:
+    return bool(_INVISIBLE.search(text))
+
+
+def contains_control(text: str) -> bool:
+    return any(unicodedata.category(char) == "Cc" and char not in "\n\t" for char in text)
+
+
+def safe_overlay_text(text: str, *, max_chars: int = 4000) -> bool:
+    return (
+        isinstance(text, str)
+        and len(text) <= max_chars
+        and not contains_control(text)
+        and not contains_invisible(text)
+        and not contains_prompt_injection(text)
+        and not contains_secret(text)
+    )
 
 
 def redact_strict(text: str) -> str:

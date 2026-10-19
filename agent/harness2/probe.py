@@ -66,7 +66,7 @@ class LiveProbeRunner:
             usage = Usage(response.input_tokens, response.output_tokens, response.input_tokens + response.output_tokens)
             return _result(task_id, label, Status.ok, text, None, usage, response.model, response.provider,
                            self.probe_mode, harness_id)
-        except Exception as exc:
+        except Exception as exc:  # health: allow BLE001 -- convert model failures into redacted probe results
             error = redact_strict(str(exc))[:200]
             return _result(task_id, label, Status.error, "", error, Usage(), "", "", self.probe_mode, harness_id)
 
@@ -114,7 +114,7 @@ def run_probe(
         usage = observed.usage if isinstance(observed.usage, Usage) else Usage.from_dict(observed.usage)
         model = str(observed.model or "")
         provider = str(observed.provider or "")
-    except Exception as exc:
+    except Exception as exc:  # health: allow BLE001 -- runner boundary records failures and preserves fail-closed status
         status = Status.error
         text = ""
         error = redact_strict(str(exc))[:200]

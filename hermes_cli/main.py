@@ -383,6 +383,7 @@ from hermes_cli.subcommands.memory import build_memory_parser
 from hermes_cli.subcommands.acp import build_acp_parser
 from hermes_cli.subcommands.tools import build_tools_parser
 from hermes_cli.subcommands.insights import build_insights_parser
+from hermes_cli.harness2_cmd import build_harness2_parser, cmd_harness2
 from hermes_cli.subcommands.usage import build_usage_parser
 from hermes_cli.subcommands.monitoring import build_monitoring_parser
 from hermes_cli.subcommands.skills import build_skills_parser
@@ -795,14 +796,7 @@ from hermes_cli.model_setup_flows import (
 )
 from hermes_cli.model_setup_flows_local import _model_flow_local
 logger = logging.getLogger(__name__)
-from hermes_cli.main_agent_cmds import (
-    cmd_acp,
-    cmd_insights,
-    cmd_memory,
-    cmd_monitoring,
-    cmd_skills,
-    cmd_tools,
-)
+from hermes_cli.main_agent_cmds import cmd_acp, cmd_insights, cmd_memory, cmd_monitoring, cmd_skills, cmd_tools
 from hermes_cli.main_platform_setup import (
     cmd_slack,
     cmd_whatsapp,
@@ -3415,6 +3409,7 @@ def _build_cli_parser():
     build_connectors_parser(subparsers)
     build_sessions_parser(subparsers, cmd_sessions=cmd_sessions_lazy)
     build_insights_parser(subparsers, cmd_insights=cmd_insights)
+    build_harness2_parser(subparsers, cmd_harness2=cmd_harness2)
     build_usage_parser(subparsers)
     build_monitoring_parser(subparsers, cmd_monitoring=cmd_monitoring)
     build_claw_parser(subparsers, cmd_claw=cmd_claw)
